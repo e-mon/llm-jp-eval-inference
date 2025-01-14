@@ -6,10 +6,10 @@ from typing import Any, Dict
 
 import torch
 import transformers
+from llm_jp_eval.cli import setup_cli
 from peft import PeftModel
 from transformers import PreTrainedTokenizerBase, pipeline
 
-from llm_jp_eval.cli import setup_cli
 from llm_jp_eval_inference.generator import GeneratorBase
 from llm_jp_eval_inference.schemas import DatasetProfile
 from llm_jp_eval_inference.transformers_schemas import InferenceConfig
@@ -17,16 +17,24 @@ from llm_jp_eval_inference.transformers_schemas import InferenceConfig
 logger = logging.getLogger(__name__)
 transformers.logging.set_verbosity_info()
 
+
 def main():
     cfg = setup_cli(InferenceConfig)
     generator = TransformersGenerator(cfg)
     generator.main()
 
+
 class TransformersGenerator(GeneratorBase[InferenceConfig]):
     def __init__(self, cfg: InferenceConfig):
         super().__init__(cfg, "transformers", transformers)
-        self.model_name = cfg.model.pretrained_model_name_or_path.strip(" \t\r\n./").replace("/", "--")
-        self.base_model_name = self.model_name if cfg.run.base_model_name is None else cfg.run.base_model_name
+        self.model_name = cfg.model.pretrained_model_name_or_path.strip(
+            " \t\r\n./"
+        ).replace("/", "--")
+        self.base_model_name = (
+            self.model_name
+            if cfg.run.base_model_name is None
+            else cfg.run.base_model_name
+        )
         if cfg.run.quantization is not None:
             self.quantization = cfg.run.quantization
         elif cfg.model.load_in_4bit:
@@ -38,24 +46,40 @@ class TransformersGenerator(GeneratorBase[InferenceConfig]):
         self.max_len = cfg.tokenizer.model_max_length
 
     def load_tokenizer(self):
-        self.tokenizer: PreTrainedTokenizerBase = transformers.AutoTokenizer.from_pretrained(**self.cfg.tokenizer.model_dump())
+        self.tokenizer: PreTrainedTokenizerBase = (
+            transformers.AutoTokenizer.from_pretrained(
+                **self.cfg.tokenizer.model_dump()
+            )
+        )
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
             if self.is_master_process:
                 logger.info("setting pad_token_id=eos_token_id")
 
     def load_model(self, dataset_profile: Dict[str, DatasetProfile]):
-        if Path(f"{self.cfg.model.pretrained_model_name_or_path}/adapter_config.json").exists():
+        if Path(
+            f"{self.cfg.model.pretrained_model_name_or_path}/adapter_config.json"
+        ).exists():
             peft_dir: str = self.cfg.model.pretrained_model_name_or_path
             with open(f"{peft_dir}/adapter_config.json", encoding="utf-8") as f:
                 adapter_config = json.load(f)
-            self.cfg.model.pretrained_model_name_or_path = adapter_config["base_model_name_or_path"]
+            self.cfg.model.pretrained_model_name_or_path = adapter_config[
+                "base_model_name_or_path"
+            ]
             if not self.base_model_name:
-                self.base_model_name = adapter_config["base_model_name_or_path"].strip(" \t\r\n./").replace("/", "--")
-            base_model = transformers.AutoModelForCausalLM.from_pretrained(**self.cfg.model.model_dump())
+                self.base_model_name = (
+                    adapter_config["base_model_name_or_path"]
+                    .strip(" \t\r\n./")
+                    .replace("/", "--")
+                )
+            base_model = transformers.AutoModelForCausalLM.from_pretrained(
+                **self.cfg.model.model_dump()
+            )
             self.model = PeftModel.from_pretrained(base_model, peft_dir)
         else:
-            self.model = transformers.AutoModelForCausalLM.from_pretrained(**self.cfg.model.model_dump())
+            self.model = transformers.AutoModelForCausalLM.from_pretrained(
+                **self.cfg.model.model_dump()
+            )
         self.model.eval()
 
     def generate(

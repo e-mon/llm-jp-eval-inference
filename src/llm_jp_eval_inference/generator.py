@@ -7,15 +7,16 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, TypeVar, Generic
+from typing import Any, Dict, Generic, List, Tuple, TypeVar
 
 import torch
 import wandb
 
-from llm_jp_eval_inference.schemas import BaseInferenceConfig, DatasetProfile, InferenceResultInfo
+from llm_jp_eval_inference.schemas import (BaseInferenceConfig, DatasetProfile,
+                                           InferenceResultInfo)
 from llm_jp_eval_inference.utility import set_seed
 
-logging.basicConfig(level = logging.INFO)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 InferenceConfigT = TypeVar("InferenceConfigT", bound=BaseInferenceConfig)
@@ -26,7 +27,9 @@ class GeneratorBase(Generic[InferenceConfigT]):
         self.cfg = cfg
         self.lib_type = cfg.run.lib_type
         if self.lib_type is None:
-            module_version = GeneratorBase.get_module_version(generator_module, short=True)
+            module_version = GeneratorBase.get_module_version(
+                generator_module, short=True
+            )
             self.lib_type = f"{generator_type}{module_version}"
         self.gpu_type = cfg.run.gpu_type
         if self.gpu_type is None:
@@ -99,16 +102,26 @@ class GeneratorBase(Generic[InferenceConfigT]):
                         )
         return dataset, dump_prompts_config
 
-    def tokenize_dataset(self, dataset: Dict[str, Dict[str, Any]]) -> Dict[str, Tuple[Dict[str, Any], list, list]]:
+    def tokenize_dataset(
+        self, dataset: Dict[str, Dict[str, Any]]
+    ) -> Dict[str, Tuple[Dict[str, Any], list, list]]:
         tokenized_dataset = {}
         for target_dataset, target_data in dataset.items():
             samples = [sample["prompt"] for sample in target_data["samples"]]
-            prompt_tokens = self.tokenizer(samples, **self.cfg.tokenize_kwargs)["input_ids"]
+            prompt_tokens = self.tokenizer(samples, **self.cfg.tokenize_kwargs)[
+                "input_ids"
+            ]
             prompt_lengths = [len(_) for _ in prompt_tokens]
-            tokenized_dataset[target_dataset] = (target_data, prompt_tokens, prompt_lengths)
+            tokenized_dataset[target_dataset] = (
+                target_data,
+                prompt_tokens,
+                prompt_lengths,
+            )
         return tokenized_dataset
 
-    def inspect_dataset(self, tokenized_dataset: Dict[str, Tuple[dict, list, list]]) -> Dict[str, DatasetProfile]:
+    def inspect_dataset(
+        self, tokenized_dataset: Dict[str, Tuple[dict, list, list]]
+    ) -> Dict[str, DatasetProfile]:
         num_prompt = 0
         total_num_prompt = 0
         total_max_input_len = 0
@@ -117,7 +130,11 @@ class GeneratorBase(Generic[InferenceConfigT]):
         total_max_seq_len = 0
         total_sum_seq_len = 0
         dataset_profile: Dict[str, DatasetProfile] = dict()
-        for target_dataset, (target_data, prompt_tokens, prompt_lengths) in tokenized_dataset.items():
+        for target_dataset, (
+            target_data,
+            prompt_tokens,
+            prompt_lengths,
+        ) in tokenized_dataset.items():
             num_prompt = len(prompt_tokens)
             total_num_prompt += num_prompt
             max_input_len = max(prompt_lengths)
@@ -188,16 +205,32 @@ class GeneratorBase(Generic[InferenceConfigT]):
             "(infer)": None,
         }
 
-        for target_dataset, (target_data, prompt_tokens, prompt_lengths) in tokenized_dataset.items():
+        for target_dataset, (
+            target_data,
+            prompt_tokens,
+            prompt_lengths,
+        ) in tokenized_dataset.items():
             max_input_len = dataset_profile[target_dataset].max_input_len
-            max_output_len = target_data["output_length"] + target_data["config"].get("output_length_delta", 0)
+            max_output_len = target_data["output_length"] + target_data["config"].get(
+                "output_length_delta", 0
+            )
             if self.is_master_process:
                 logger.info(f"generating {target_dataset} ...")
             start_generate = datetime.now()
-            results = self.generate(max_input_len, max_output_len, target_data, prompt_tokens, prompt_lengths)
-            time_profile[target_dataset] = (datetime.now() - start_generate).total_seconds()
+            results = self.generate(
+                max_input_len,
+                max_output_len,
+                target_data,
+                prompt_tokens,
+                prompt_lengths,
+            )
+            time_profile[target_dataset] = (
+                datetime.now() - start_generate
+            ).total_seconds()
             if self.is_master_process:
-                result_path = output_dir / f"{target_data['target_dataset']}.eval-generated.json"
+                result_path = (
+                    output_dir / f"{target_data['target_dataset']}.eval-generated.json"
+                )
                 with open(result_path, "w", encoding="utf8") as fout:
                     json.dump(results, fout, indent=1, ensure_ascii=False)
                 logger.info(f"results were saved to {result_path}")
@@ -216,12 +249,17 @@ class GeneratorBase(Generic[InferenceConfigT]):
             "init": time_profile["(init)"],
             "infer+init": time_profile["(infer)"] + time_profile["(init)"],
             "conv": time_profile["(conv)"],
-            "total": time_profile["(infer)"] + time_profile["(init)"] + time_profile["(conv)"],
+            "total": time_profile["(infer)"]
+            + time_profile["(init)"]
+            + time_profile["(conv)"],
         }
         if self.is_master_process:
             logger.info(f"time_profile: {time_profile}")
         self.cfg.inference_result_info = InferenceResultInfo(
-            dump_prompts_config=dump_prompts_config, dataset_profile=dataset_profile, benchmark=benchmark, time_profile=time_profile,
+            dump_prompts_config=dump_prompts_config,
+            dataset_profile=dataset_profile,
+            benchmark=benchmark,
+            time_profile=time_profile,
         )
         if self.is_master_process:
             with open(output_dir / "_config.json", "w", encoding="utf8") as fout:
@@ -241,7 +279,15 @@ class GeneratorBase(Generic[InferenceConfigT]):
         run_name_suffix = f"{tp}{pp}{max_len}{run_options}{self.run_name_suffix or ''}"
 
         return "::".join(
-            _ for _ in [self.base_model_name, lib_type, gpu_type, quantization, run_name_suffix] if _
+            _
+            for _ in [
+                self.base_model_name,
+                lib_type,
+                gpu_type,
+                quantization,
+                run_name_suffix,
+            ]
+            if _
         )
 
     def main(self):
@@ -261,6 +307,7 @@ class GeneratorBase(Generic[InferenceConfigT]):
                 config=cfg.model_dump(),
                 job_type="evaluation",
             )
+            self.cfg.run.wandb_run_id = wandb_run.id
         else:
             wandb_run = None
 
@@ -268,7 +315,7 @@ class GeneratorBase(Generic[InferenceConfigT]):
             print(f"run_name={run_name}")
             logger.info(" ".join(sys.argv))
             logger.info(cfg)
-        
+
         self.execute()
 
         if wandb_run:
@@ -278,20 +325,28 @@ class GeneratorBase(Generic[InferenceConfigT]):
             dataset_profile_table = wandb.Table(keys, records)
             wandb_run.log({"dataset_profile_table": dataset_profile_table})
             benchmark = cfg.inference_result_info.benchmark
-            benchmark_table = wandb.Table(list(benchmark.keys()), [list(benchmark.values())])
+            benchmark_table = wandb.Table(
+                list(benchmark.keys()), [list(benchmark.values())]
+            )
             wandb_run.log({"benchmark_table": benchmark_table})
             wandb_run.finish()
 
     @classmethod
     def get_module_version(cls, module, short=False):
         try:
-            process = subprocess.Popen(["pip", "list"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            process = subprocess.Popen(
+                ["pip", "list"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
+            )
             pip_list = str(process.stdout.read(), encoding="utf8")
             m = re.search(rf"\n{module.__name__} +(.+)\n", pip_list)
             if not m:
-                m = re.search(rf"\n{module.__name__.replace('_', '-')} +(.+)\n", pip_list)
+                m = re.search(
+                    rf"\n{module.__name__.replace('_', '-')} +(.+)\n", pip_list
+                )
             if m:
-                return m.group(1).replace(".", "").split("dev")[0] if short else m.group(1)
+                return (
+                    m.group(1).replace(".", "").split("dev")[0] if short else m.group(1)
+                )
         except Exception as e:
             logger.debug(f"pip list not working: {e}")
         return module.__version__
