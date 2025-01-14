@@ -19,8 +19,6 @@ transformers.logging.set_verbosity_info()
 
 def main():
     cfg = setup_cli(InferenceConfig)
-    with open("_config.json", "w", encoding="utf8") as fout:
-        fout.write(cfg.model_dump_json(indent=1))
     generator = TransformersGenerator(cfg)
     generator.main()
 
