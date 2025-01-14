@@ -6,7 +6,11 @@ readme = "README.md"
 requires-python = ">=3.9,<3.13"
 dependencies = [
     "pydantic>=2.10.5",
+    "llm-jp-eval",
 ]
+
+[tool.uv.sources]
+llm-jp-eval = { git = "https://github.com/e-mon/llm-jp-eval", branch = "refactor/feature/configs" }
 
 [build-system]
 requires = ["hatchling"]
@@ -19,6 +23,3 @@ packages = ["src/llm_jp_eval_inference"]
 dev-dependencies = [
     "ruff>=0.9.1",
 ]
-
-[tool.uv.workspace]
-members = ["inference-modules/transformers"]
